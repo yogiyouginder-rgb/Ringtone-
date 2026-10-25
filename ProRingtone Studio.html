@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>RingtoneX - Premium Ringtone Studio</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        darkBg: '#09101a',
+                        cardBg: 'rgba(255, 255, 255, 0.03)',
+                        cardBorder: 'rgba(255, 255, 255, 0.08)',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+    <style>
+        html, body {
+            max-width: 100vw !important;
+            overflow-x: hidden !important;
+            margin: 0;
+            padding: 0;
+            position: relative;
+        }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #09101a; }
+        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 9999px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); }
+        
+        .glass-panel {
+            background: rgba(13, 20, 33, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.025);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .glass-card:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(56, 189, 248, 0.4); 
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px -10px rgba(56, 189, 248, 0.2);
+        }
+        .glow-effect {
+            position: absolute;
+            width: 350px;
+            height: 350px;
+            background: radial-gradient(circle, rgba(56, 189, 248, 0.15) 0%, rgba(59, 130, 246, 0.08) 50%, transparent 70%);
+            border-radius: 50%;
+            filter: blur(40px);
+        }
+
+        .player-visible { transform: translateY(0); }
+        .player-hidden { transform: translateY(110%); }
+        .swipe-handler {
+            width: 40px; height: 5px; 
+            background: rgba(255,255,255,0.3); 
+            border-radius: 10px; margin: 0 auto 10px auto;
+            cursor: grab;
+        }
+    </style>
+</head>
+<body class="bg-darkBg text-slate-100 font-sans min-h-screen flex flex-col selection:bg-sky-500 selection:text-white">
+
+    <audio id="mainAudioPlayer" preload="auto"></audio>
+
+    <div class="fixed inset-0 w-screen h-screen overflow-hidden pointer-events-none z-0">
+        <div class="glow-effect top-[-50px] left-[-50px]"></div>
+        <div class="glow-effect bottom-[20%] right-[-100px]"></div>
+    </div>
+
+    <header class="glass-panel sticky top-0 z-40 px-4 lg:px-8 py-4 flex items-center justify-between border-b border-cardBorder w-full">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-400 to-blue-600 flex items-center justify-center shadow-lg shadow-sky-500/30">
+                <i class="fa-solid fa-headphones-simple text-white text-lg"></i>
+            </div>
+            <div>
+                <span class="text-xl font-bold tracking-tight bg-gradient-to-r from-white via-sky-100 to-sky-300 bg-clip-text text-transparent">RingtoneX</span>
+                <span class="text-xs block text-sky-400 font-medium tracking-widest uppercase">Pro Studio</span>
+            </div>
+        </div>
+
+        <div class="hidden md:flex items-center relative w-72 lg:w-96">
+            <i class="fa-solid fa-magnifying-glass absolute left-3.5 text-slate-400 text-sm"></i>
+            <input type="text" id="searchInputDesktop" placeholder="Search ringtones..." oninput="syncSearch(this.value)" class="w-full bg-white/5 border border-white/10 rounded-full pl-10 pr-4 py-2 text-sm text-slate-200 focus:border-sky-500 transition-all outline-none">
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <button onclick="switchTab('favorites')" class="relative px-3.5 py-2 rounded-xl text-sm font-medium text-slate-300 hover:text-white transition flex items-center space-x-2 bg-white/5 border border-white/10">
+                <i class="fa-solid fa-heart text-rose-400"></i>
+                <span class="hidden sm:inline">Favorites</span>
+                <span id="favCountBadge" class="bg-sky-500/20 text-sky-300 text-xs px-2 py-0.5 rounded-full border border-sky-500/30">0</span>
+            </button>
+        </div>
+    </header>
+
+    <div class="flex-1 flex flex-col lg:flex-row relative z-10 max-w-7xl mx-auto w-full p-4 lg:p-6 gap-6 pb-36">
+        
+        <aside class="w-full lg:w-64 flex-shrink-0 space-y-6">
+            <div class="md:hidden glass-panel p-4 rounded-2xl border border-sky-500/20 bg-sky-900/10">
+                <h3 class="text-xs font-semibold tracking-wider text-sky-300 uppercase mb-3 px-1">Find Ringtones</h3>
+                <div class="relative w-full">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3 text-slate-400 text-sm"></i>
+                    <input type="text" id="searchInputMobile" placeholder="Search by name..." oninput="syncSearch(this.value)" class="w-full bg-black/20 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:border-sky-500 transition-all outline-none placeholder-slate-500 shadow-inner">
+                </div>
+            </div>
+
+            <div class="glass-panel p-4 rounded-2xl">
+                <h3 class="text-xs font-semibold tracking-wider text-slate-400 uppercase mb-3 px-2">Navigation</h3>
+                <nav class="space-y-1">
+                    <button onclick="switchTab('discover')" id="tabDiscover" class="w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                        <i class="fa-solid fa-compass w-5 text-center"></i>
+                        <span>Discover</span>
+                    </button>
+                    <button onclick="switchTab('favorites')" id="tabFavorites" class="w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition text-slate-300 hover:bg-white/5 hover:text-white">
+                        <i class="fa-solid fa-heart w-5 text-center text-sky-400"></i>
+                        <span>My Favorites</span>
+                    </button>
+                </nav>
+            </div>
+            
+            <div class="glass-panel p-4 rounded-2xl">
+                <h3 class="text-xs font-semibold tracking-wider text-slate-400 uppercase mb-3 px-2">Categories</h3>
+                <div class="space-y-1" id="categoryList">
+                    <button onclick="filterCategory('All')" class="cat-btn w-full flex items-center justify-between px-3.5 py-2 rounded-xl text-sm font-medium transition bg-white/10 text-white" data-cat="All">
+                        <span class="flex items-center space-x-2.5"><i class="fa-solid fa-globe text-sky-400"></i><span>All Ringtones</span></span>
+                        <span class="text-xs text-slate-400" id="countAll">0</span>
+                    </button>
+                    <button onclick="filterCategory('Pop')" class="cat-btn w-full flex items-center justify-between px-3.5 py-2 rounded-xl text-sm font-medium transition text-slate-300 hover:bg-white/5 hover:text-white" data-cat="Pop">
+                        <span class="flex items-center space-x-2.5"><i class="fa-solid fa-music text-blue-400"></i><span>Pop Hits</span></span>
+                        <span class="text-xs text-slate-400" id="countPop">0</span>
+                    </button>
+                    <button onclick="filterCategory('Bhajan')" class="cat-btn w-full flex items-center justify-between px-3.5 py-2 rounded-xl text-sm font-medium transition text-slate-300 hover:bg-white/5 hover:text-white" data-cat="Bhajan">
+                        <span class="flex items-center space-x-2.5"><i class="fa-solid fa-om text-amber-400"></i><span>Bhajan</span></span>
+                        <span class="text-xs text-slate-400" id="countBhajan">0</span>
+                    </button>
+                    <button onclick="filterCategory('Epic')" class="cat-btn w-full flex items-center justify-between px-3.5 py-2 rounded-xl text-sm font-medium transition text-slate-300 hover:bg-white/5 hover:text-white" data-cat="Epic">
+                        <span class="flex items-center space-x-2.5"><i class="fa-solid fa-bolt-lightning text-emerald-400"></i><span>Epic</span></span>
+                        <span class="text-xs text-slate-400" id="countEpic">0</span>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <main class="flex-1 space-y-6 w-full max-w-full overflow-hidden">
+            <div id="heroSection" class="glass-panel p-6 lg:p-8 rounded-3xl relative overflow-hidden border border-sky-500/30 bg-gradient-to-r from-sky-950/60 via-blue-950/40 to-slate-950/60 shadow-2xl w-full">
+                <div class="absolute right-0 top-0 w-96 h-full bg-gradient-to-l from-sky-500/10 to-transparent pointer-events-none"></div>
+                <div class="relative z-10 max-w-xl space-y-3">
+                    <span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                        <i class="fa-solid fa-bolt-lightning text-amber-400"></i>
+                        <span>Trending Ringtone</span>
+                    </span>
+                    <h1 class="text-2xl lg:text-4xl font-extrabold tracking-tight text-white">Bapu Kisan Hai</h1>
+                    <p class="text-sm text-slate-300">Streaming live directly from your GitHub Repository & Firebase.</p>
+                    <div class="flex items-center space-x-4 pt-2">
+                        <button onclick="playRingtone('7')" class="px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-white font-semibold text-sm shadow-lg transition flex items-center space-x-2">
+                            <i class="fa-solid fa-play"></i>
+                            <span>Play Now</span>
+                        </button>
+                        <button onclick="openDownloadModal('Bapu Kisan Hai', 'Pop', 'Vijay')" class="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold text-sm transition border border-white/10 flex items-center space-x-2">
+                            <i class="fa-solid fa-download"></i>
+                            <span>Download</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-between gap-4 w-full px-2">
+                <div>
+                    <h2 id="sectionTitle" class="text-xl font-bold text-white">Discover Ringtones</h2>
+                    <p id="sectionSubtitle" class="text-xs text-slate-400">Play and Download your favorite tones</p>
+                </div>
+                <div id="firebaseLoading" class="text-sky-400 text-sm hidden">
+                    <i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Syncing...
+                </div>
+            </div>
+
+            <div id="ringtonesGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4 w-full"></div>
+            
+            <div id="emptyState" class="hidden glass-panel p-12 rounded-3xl text-center space-y-4 w-full">
+                <div class="w-16 h-16 mx-auto rounded-2xl bg-white/5 flex items-center justify-center text-slate-400 text-2xl">
+                    <i class="fa-solid fa-search"></i>
+                </div>
+                <h3 class="text-lg font-bold text-white">No ringtones found</h3>
+                <button onclick="resetFilters()" class="px-4 py-2 rounded-xl bg-sky-500 text-white text-sm font-semibold hover:bg-sky-400 transition">Clear Search</button>
+            </div>
+        </main>
+    </div>
+
+    <!-- Swipeable Audio Player Bottom Bar -->
+    <div id="playerBar" class="fixed bottom-0 left-0 right-0 z-50 glass-panel border-t border-cardBorder py-3 px-4 lg:px-8 shadow-[0_-10px_40px_-10px_rgba(56,189,248,0.15)] transition-transform duration-300 player-hidden w-full touch-none">
+        
+        <div class="swipe-handler" id="swipeArea"></div>
+
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 w-full">
+            
+            <div class="flex items-center space-x-3 w-full md:w-auto">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-tr from-sky-400 to-blue-600 flex items-center justify-center text-white text-lg shadow-md flex-shrink-0 relative overflow-hidden" id="playerIconContainer">
+                    <i class="fa-solid fa-music relative z-10" id="playerIcon"></i>
+                    <img id="playerCoverImg" src="" class="absolute inset-0 w-full h-full object-cover hidden opacity-40">
+                </div>
+                <div class="min-w-0">
+                    <h4 id="playerTitle" class="text-sm font-bold text-white truncate">Select a ringtone</h4>
+                    <p id="playerCategory" class="text-xs text-sky-400 truncate">RingtoneX Studio</p>
+                </div>
+                <button onclick="toggleFavoriteActive()" id="playerFavBtn" class="text-slate-400 hover:text-rose-400 ml-2 transition">
+                    <i class="fa-regular fa-heart text-lg"></i>
+                </button>
+            </div>
+
+            <div class="flex flex-col items-center w-full md:max-w-xl space-y-1.5">
+                <div class="flex items-center space-x-4">
+                    <button onclick="skipTime(-5)" class="text-slate-400 hover:text-white transition text-sm"><i class="fa-solid fa-rotate-left"></i></button>
+                    <button onclick="togglePlayPause()" id="mainPlayPauseBtn" class="w-10 h-10 rounded-full bg-white text-darkBg hover:bg-sky-100 flex items-center justify-center transition shadow-lg">
+                        <i class="fa-solid fa-play text-sm ml-0.5" id="mainPlayIcon"></i>
+                    </button>
+                    <button onclick="skipTime(5)" class="text-slate-400 hover:text-white transition text-sm"><i class="fa-solid fa-rotate-right"></i></button>
+                </div>
+
+                <div class="w-full flex items-center space-x-3">
+                    <span id="currentTime" class="text-xs text-slate-400 w-8 text-right font-mono">0:00</span>
+                    <div class="relative flex-1 h-8 flex items-center cursor-pointer group" id="waveformContainer" onclick="seekAudio(event)">
+                        <div class="w-full h-6 flex items-center justify-between space-x-[2px]" id="waveformBars"></div>
+                        <input type="range" id="progressRange" min="0" max="100" value="0" step="0.1" class="absolute inset-0 w-full opacity-0 cursor-pointer">
+                    </div>
+                    <span id="totalDuration" class="text-xs text-slate-400 w-8 font-mono">0:00</span>
+                </div>
+            </div>
+
+            <div class="hidden lg:flex items-center space-x-4">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-volume-high text-slate-400 text-sm"></i>
+                    <input type="range" id="volumeSlider" min="0" max="1" step="0.05" value="0.8" oninput="changeVolume(this.value)" class="w-20 accent-sky-500 cursor-pointer">
+                </div>
+                <button onclick="openDownloadModalFromPlayer()" class="px-4 py-2 bg-gradient-to-r from-sky-500 to-blue-500 hover:from-sky-400 text-white text-xs font-semibold rounded-xl transition flex items-center space-x-1.5 shadow-lg">
+                    <i class="fa-solid fa-download"></i>
+                    <span>Download</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Download Modal -->
+    <div id="downloadModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md hidden opacity-0 transition-opacity duration-300 w-full h-full">
+        <div class="glass-panel max-w-lg w-full p-6 lg:p-8 rounded-3xl border border-white/10 shadow-2xl relative space-y-6" id="downloadModalContent">
+            <button onclick="closeDownloadModal()" class="absolute top-5 right-5 text-slate-400 hover:text-white transition w-8 h-8 rounded-full bg-white/5 flex items-center justify-center">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+
+            <div class="flex items-center space-x-4">
+                <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center text-white text-2xl shadow-xl shadow-sky-500/30 overflow-hidden relative" id="modalIconContainer">
+                    <i class="fa-solid fa-bell relative z-10" id="modalIcon"></i>
+                    <img id="modalCoverImg" src="" class="absolute inset-0 w-full h-full object-cover hidden opacity-40">
+                </div>
+                <div>
+                    <span class="text-xs font-semibold text-sky-400 uppercase tracking-wider" id="modalCategory">Category</span>
+                    <h3 class="text-xl font-bold text-white" id="modalTitle">RingTone Name</h3>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-3">
+                <button onclick="triggerFileDownload()" class="p-3 rounded-2xl bg-sky-500 hover:bg-sky-400 text-center transition group flex items-center justify-center space-x-2 shadow-lg">
+                    <i class="fa-solid fa-download text-white"></i>
+                    <span class="text-sm font-bold text-white">Download MP3 File</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="fixed top-20 right-5 z-50 transform translate-x-full transition-transform duration-300 glass-panel px-4 py-3 rounded-2xl border border-sky-500/30 shadow-2xl flex items-center space-x-3">
+        <div class="w-8 h-8 rounded-full bg-sky-500/20 text-sky-400 flex items-center justify-center text-sm">
+            <i class="fa-solid fa-check"></i>
+        </div>
+        <div>
+            <h5 class="text-xs font-bold text-white" id="toastTitle">Success</h5>
+            <p class="text-[11px] text-slate-300" id="toastMsg">Action completed successfully.</p>
+        </div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyDPNL9Fzq79EhwKRO-SJv7EkpbWUUq_2w8",
+            authDomain: "ringtonex-66f61.firebaseapp.com",
+            databaseURL: "https://ringtonex-66f61-default-rtdb.firebaseio.com",
+            projectId: "ringtonex-66f61",
+            storageBucket: "ringtonex-66f61.firebasestorage.app",
+            messagingSenderId: "220695302250",
+            appId: "1:220695302250:web:1f1d1c9931d3dbfcff3a13"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        const localRingtones = [
+            { id: "1", title: "AQM Custom Audio", artist: "Vijay", category: "Pop", downloads: "2.5K", popular: true, audioUrl: "https://raw.githubusercontent.com/yogiyouginder-rgb/Vijay-/main/AQM-1.mp3" },
+            { id: "2", title: "Bharat Ka Baccha Baccha", artist: "Devotional", category: "Bhajan", downloads: "5.1K", popular: true, audioUrl: "https://raw.githubusercontent.com/yogiyouginder-rgb/Vijay-/main/bhart%20ka%20baccha%20baccha%20Jay%20shree%20ram%20bolega%20.mp3" },
+            { id: "3", title: "UMG Custom Ringtone", artist: "Vijay", category: "Epic", downloads: "1.2K", popular: false, audioUrl: "https://raw.githubusercontent.com/yogiyouginder-rgb/Vijay-/main/UMG.mp3" },
+            { id: "4", title: "Shyam Nagina Ban Jate", artist: "Devotional", category: "Bhajan", downloads: "8.9K", popular: true, audioUrl: "https://raw.githubusercontent.com/yogiyouginder-rgb/Vijay-/main/shyam%20ngina%20ban%20jate%20.mp3" },
+            { id: "5", title: "Chal Re Chal", artist: "Vijay", category: "Pop", downloads: "4.3K", popular: true, audioUrl: "https://raw.githubusercontent.com/yogiyouginder-rgb/Vijay-/main/chal%20re%20chal%20.mp3" },
+            { id: "6", title: "Murli", artist: "Devotional", category: "Bhajan", downloads: "3.4K", popular: true, audioUrl: "https://raw.githubusercontent.com/yogiyouginder-rgb/Ringtone-/main/murli.mp3" },
+            { id: "7", title: "Bapu Kisan Hai", artist: "Vijay", category: "Pop", downloads: "6.7K", popular: true, audioUrl: "https://raw.githubusercontent.com/yogiyouginder-rgb/Ringtone-/main/Bapu%20Kisan%20Hai.mp3" }
+        ];
+
+        let allRingtones = [...localRingtones];
+        let favorites = ["2", "4"]; 
+        let currentCategory = 'All';
+        let currentTab = 'discover';
+        let activeRingtoneId = null;
+        let searchQuery = '';
+        
+        const audioPlayer = document.getElementById('mainAudioPlayer');
+        let isPlaying = false;
+        let progressInterval = null;
+        let mainPlayPromise = null;
+
+        const ringtonesGrid = document.getElementById('ringtonesGrid');
+        const playerBar = document.getElementById('playerBar');
+        const mainPlayIcon = document.getElementById('mainPlayIcon');
+        const progressRange = document.getElementById('progressRange');
+        const currentTimeEl = document.getElementById('currentTime');
+        const totalDurationEl = document.getElementById('totalDuration');
+        const waveformBars = document.getElementById('waveformBars');
+
+        // ==== SMART LINK AUTO-FIXER ====
+        function autoFixLink(url) {
+            if(!url) return "";
+            let fixedUrl = url.trim();
+            // Fix GitHub Blob to Raw
+            if (fixedUrl.includes("github.com") && fixedUrl.includes("/blob/")) {
+                fixedUrl = fixedUrl.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/");
+            }
+            return fixedUrl;
+        }
+
+        window.onload = function() {
+            renderWaveformVisualizer();
+            updateCategoryCounts();
+            renderRingtones();
+            updateFavoritesBadge();
+            setupSwipeToHide();
+            
+            document.getElementById('searchInputDesktop').addEventListener('input', (e) => syncSearch(e.target.value));
+            document.getElementById('searchInputMobile').addEventListener('input', (e) => syncSearch(e.target.value));
+
+            loadFirebaseRingtones();
+            setupAudioPlayerListeners();
+        };
+
+        function setupAudioPlayerListeners() {
+            audioPlayer.addEventListener('loadedmetadata', () => {
+                totalDurationEl.innerText = formatTime(audioPlayer.duration);
+            });
+            
+            audioPlayer.addEventListener('ended', () => {
+                pauseAudio();
+                progressRange.value = 0;
+                currentTimeEl.innerText = "0:00";
+                const bars = waveformBars.children;
+                for (let bar of bars) bar.className = 'w-1 bg-white/20 rounded-full transition-all duration-150';
+            });
+        }
+
+        function loadFirebaseRingtones() {
+            document.getElementById('firebaseLoading').classList.remove('hidden');
+            
+            database.ref('ringtones').on('value', (snapshot) => {
+                const data = snapshot.val();
+                let firebaseTones = [];
+                
+                if (data) {
+                    Object.keys(data).forEach(key => {
+                        firebaseTones.push({
+                            id: data[key].id || key,
+                            title: data[key].title,
+                            artist: data[key].artist,
+                            category: data[key].category,
+                            popular: data[key].popular,
+                            audioUrl: autoFixLink(data[key].audioUrl), // Apply Fix Here!
+                            imageUrl: data[key].imageUrl, 
+                            downloads: data[key].downloads || "0"
+                        });
+                    });
+                }
+                
+                allRingtones = [...localRingtones, ...firebaseTones.reverse()];
+                updateCategoryCounts();
+                renderRingtones();
+                document.getElementById('firebaseLoading').classList.add('hidden');
+            }, (error) => {
+                console.error("Firebase Read Error:", error);
+                document.getElementById('firebaseLoading').classList.add('hidden');
+            });
+        }
+
+        function updateCategoryCounts() {
+            document.getElementById('countAll').innerText = allRingtones.length;
+            document.getElementById('countPop').innerText = allRingtones.filter(r => r.category === 'Pop').length;
+            document.getElementById('countBhajan').innerText = allRingtones.filter(r => r.category === 'Bhajan').length;
+            document.getElementById('countEpic').innerText = allRingtones.filter(r => r.category === 'Epic').length;
+        }
+
+        function syncSearch(val) {
+            document.getElementById('searchInputDesktop').value = val;
+            const mobileInput = document.getElementById('searchInputMobile');
+            if(mobileInput) mobileInput.value = val;
+            
+            searchQuery = val.toLowerCase();
+            renderRingtones();
+        }
+
+        function renderWaveformVisualizer() {
+            waveformBars.innerHTML = '';
+            for (let i = 0; i < 36; i++) {
+                const height = Math.floor(Math.random() * 20) + 6;
+                const bar = document.createElement('div');
+                bar.className = 'w-1 bg-white/20 rounded-full transition-all duration-150';
+                bar.style.height = `${height}px`;
+                waveformBars.appendChild(bar);
+            }
+        }
+
+        function renderRingtones() {
+            let filtered = allRingtones.filter(r => {
+                const matches = r.title.toLowerCase().includes(searchQuery) || r.artist.toLowerCase().includes(searchQuery) || r.category.toLowerCase().includes(searchQuery);
+                if (currentTab === 'favorites') return favorites.includes(r.id) && matches;
+                if (currentCategory !== 'All') return r.category === currentCategory && matches;
+                return matches;
+            });
+
+            ringtonesGrid.innerHTML = '';
+            if (filtered.length === 0) {
+                document.getElementById('emptyState').classList.remove('hidden');
+                document.getElementById('heroSection').classList.add('hidden');
+                return;
+            } else {
+                document.getElementById('emptyState').classList.add('hidden');
+                if (currentTab === 'discover' && currentCategory === 'All' && !searchQuery) {
+                    document.getElementById('heroSection').classList.remove('hidden');
+                } else {
+                    document.getElementById('heroSection').classList.add('hidden');
+                }
+            }
+
+            filtered.forEach(r => {
+                const isFav = favorites.includes(r.id);
+                const isActive = activeRingtoneId === r.id && isPlaying;
+                
+                let gradientClass = 'from-sky-400 to-blue-600';
+                if (r.category === 'Bhajan') gradientClass = 'from-amber-500 to-orange-500';
+                else if (r.category === 'Epic') gradientClass = 'from-emerald-400 to-emerald-600';
+
+                let iconUI = `<i class="fa-solid ${isActive ? 'fa-pause' : 'fa-play'} relative z-10"></i>`;
+                if(r.imageUrl && r.imageUrl !== "https://via.placeholder.com/150") {
+                    iconUI += `<img src="${r.imageUrl}" class="absolute inset-0 w-full h-full object-cover opacity-40 rounded-xl">`;
+                }
+
+                const card = document.createElement('div');
+                card.className = `glass-card p-4 rounded-2xl flex items-center justify-between group cursor-pointer ${isActive ? 'border-sky-500/60 bg-sky-950/30' : ''} w-full`;
+                card.onclick = () => playRingtone(r.id);
+
+                card.innerHTML = `
+                    <div class="flex items-center space-x-3.5 min-w-0 flex-1">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br ${gradientClass} flex items-center justify-center text-white text-base shadow-md group-hover:scale-105 transition flex-shrink-0 relative overflow-hidden">
+                            ${iconUI}
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <h4 class="text-sm font-bold text-white truncate group-hover:text-sky-300 transition">${r.title}</h4>
+                            <p class="text-xs text-slate-400 truncate">${r.artist} • <span class="text-sky-400">${r.category}</span></p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-2 flex-shrink-0" onclick="event.stopPropagation()">
+                        <button onclick="toggleFavorite('${r.id}')" class="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-rose-400 transition">
+                            <i class="${isFav ? 'fa-solid fa-heart text-rose-500' : 'fa-regular fa-heart'}"></i>
+                        </button>
+                        <button onclick="openDownloadModal('${r.id}')" class="w-9 h-9 rounded-xl bg-sky-500/20 text-sky-300 hover:text-white flex items-center justify-center transition border border-sky-500/30">
+                            <i class="fa-solid fa-download text-xs"></i>
+                        </button>
+                    </div>
+                `;
+                ringtonesGrid.appendChild(card);
+            });
+        }
+
+        function switchTab(tab) {
+            currentTab = tab;
+            document.getElementById('tabDiscover').classList.remove('bg-sky-500/20', 'text-sky-300', 'border-sky-500/30');
+            document.getElementById('tabFavorites').classList.remove('bg-sky-500/20', 'text-sky-300', 'border-sky-500/30');
+            
+            if(tab === 'discover') {
+                document.getElementById('tabDiscover').classList.add('bg-sky-500/20', 'text-sky-300', 'border-sky-500/30');
+                document.getElementById('sectionTitle').innerText = "Discover Ringtones";
+            } else {
+                document.getElementById('tabFavorites').classList.add('bg-sky-500/20', 'text-sky-300', 'border-sky-500/30');
+                document.getElementById('sectionTitle').innerText = "My Favorites";
+            }
+            renderRingtones();
+        }
+
+        function filterCategory(cat) {
+            currentCategory = cat;
+            document.querySelectorAll('.cat-btn').forEach(btn => {
+                btn.classList.remove('bg-white/10', 'text-white');
+                btn.classList.add('text-slate-300');
+                if(btn.dataset.cat === cat) {
+                    btn.classList.add('bg-white/10', 'text-white');
+                    btn.classList.remove('text-slate-300');
+                }
+            });
+            document.getElementById('sectionTitle').innerText = cat === 'All' ? 'All Ringtones' : `${cat} Ringtones`;
+            renderRingtones();
+        }
+
+        function playRingtone(id) {
+            const track = allRingtones.find(r => r.id === id);
+            if (!track) return;
+
+            if (activeRingtoneId === id && !audioPlayer.paused) {
+                if (mainPlayPromise !== undefined) {
+                    mainPlayPromise.then(_ => pauseAudio()).catch(error => console.log(error));
+                }
+                return;
+            }
+
+            activeRingtoneId = id;
+            audioPlayer.src = track.audioUrl;
+            audioPlayer.load();
+
+            let volSlider = document.getElementById('volumeSlider');
+            if(volSlider) audioPlayer.volume = volSlider.value;
+            
+            mainPlayPromise = audioPlayer.play();
+            if (mainPlayPromise !== undefined) {
+                mainPlayPromise.then(() => {
+                    isPlaying = true;
+                    updatePlayerBarUI(track);
+                    startProgressTracker();
+                }).catch(err => {
+                    console.log("Audio Playback Prevented/Aborted:", err);
+                    pauseAudio();
+                    if(err.name !== "AbortError") {
+                        showToast("Link Error", "Ensure the link is a direct .mp3 file.");
+                    }
+                });
+            }
+        }
+
+        function pauseAudio() {
+            audioPlayer.pause();
+            isPlaying = false;
+            clearInterval(progressInterval);
+            document.getElementById('mainPlayIcon').className = "fa-solid fa-play text-sm ml-0.5";
+            renderRingtones();
+        }
+
+        function togglePlayPause() {
+            if (!activeRingtoneId) {
+                playRingtone("1");
+                return;
+            }
+            
+            if (!audioPlayer.paused) {
+                if (mainPlayPromise !== undefined) {
+                    mainPlayPromise.then(_ => pauseAudio()).catch(e => console.log(e));
+                }
+            } else {
+                mainPlayPromise = audioPlayer.play();
+                if (mainPlayPromise !== undefined) {
+                    mainPlayPromise.then(() => {
+                        isPlaying = true;
+                        document.getElementById('mainPlayIcon').className = "fa-solid fa-pause text-sm";
+                        startProgressTracker();
+                        renderRingtones();
+                    }).catch(e => console.log(e));
+                }
+            }
+        }
+
+        function startProgressTracker() {
+            clearInterval(progressInterval);
+            progressInterval = setInterval(() => {
+                if (isPlaying && !audioPlayer.paused) {
+                    const time = audioPlayer.currentTime;
+                    const dur = audioPlayer.duration && audioPlayer.duration !== Infinity ? audioPlayer.duration : 30; 
+                    const percent = (time / dur) * 100;
+                    progressRange.value = percent || 0;
+                    currentTimeEl.innerText = formatTime(time);
+
+                    const bars = waveformBars.children;
+                    for (let bar of bars) {
+                        bar.style.height = `${Math.floor(Math.random() * 22) + 4}px`;
+                        bar.className = 'w-1 bg-sky-400 rounded-full transition-all duration-150';
+                    }
+                }
+            }, 200);
+        }
+
+        function seekAudio(event) {
+            if (audioPlayer.duration === 0 || audioPlayer.duration === Infinity) return;
+            const rect = document.getElementById('waveformContainer').getBoundingClientRect();
+            const pos = (event.clientX - rect.left) / rect.width;
+            audioPlayer.currentTime = pos * audioPlayer.duration;
+            progressRange.value = pos * 100;
+        }
+
+        function skipTime(seconds) {
+            if (audioPlayer.duration && audioPlayer.duration !== Infinity) {
+                audioPlayer.currentTime = Math.max(0, Math.min(audioPlayer.duration, audioPlayer.currentTime + seconds));
+            }
+        }
+
+        function changeVolume(val) {
+            audioPlayer.volume = parseFloat(val);
+        }
+
+        function formatTime(secs) {
+            if(isNaN(secs) || secs === Infinity) return "0:00";
+            const m = Math.floor(secs / 60);
+            const s = Math.floor(secs % 60);
+            return `${m}:${s < 10 ? '0' : ''}${s}`;
+        }
+
+        function updatePlayerBarUI(track) {
+            playerBar.classList.remove('player-hidden');
+            playerBar.classList.add('player-visible');
+            document.getElementById('playerTitle').innerText = track.title;
+            document.getElementById('playerCategory').innerText = `${track.artist} • ${track.category}`;
+            
+            const iconContainer = document.getElementById('playerIconContainer');
+            const icon = document.getElementById('playerIcon');
+            const coverImg = document.getElementById('playerCoverImg');
+
+            if (track.category === 'Bhajan') {
+                iconContainer.className = "w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-white text-lg shadow-md flex-shrink-0 relative overflow-hidden";
+                icon.className = "fa-solid fa-om relative z-10";
+            } else if (track.category === 'Epic') {
+                iconContainer.className = "w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white text-lg shadow-md flex-shrink-0 relative overflow-hidden";
+                icon.className = "fa-solid fa-bolt-lightning relative z-10";
+            } else {
+                iconContainer.className = "w-12 h-12 rounded-xl bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center text-white text-lg shadow-md flex-shrink-0 relative overflow-hidden";
+                icon.className = "fa-solid fa-music relative z-10";
+            }
+            
+            if(track.imageUrl && track.imageUrl !== "https://via.placeholder.com/150") {
+                coverImg.src = track.imageUrl;
+                coverImg.classList.remove('hidden');
+            } else {
+                coverImg.classList.add('hidden');
+            }
+            
+            document.getElementById('mainPlayIcon').className = "fa-solid fa-pause text-sm";
+            renderRingtones();
+        }
+
+        function setupSwipeToHide() {
+            let startY = 0;
+            let currentY = 0;
+            let isDragging = false;
+
+            playerBar.addEventListener('touchstart', (e) => {
+                startY = e.touches[0].clientY;
+                isDragging = true;
+                playerBar.style.transition = 'none'; 
+            });
+
+            playerBar.addEventListener('touchmove', (e) => {
+                if(!isDragging) return;
+                currentY = e.touches[0].clientY;
+                let diff = currentY - startY;
+                
+                if (diff > 0) {
+                    playerBar.style.transform = `translateY(${diff}px)`;
+                }
+            });
+
+            playerBar.addEventListener('touchend', (e) => {
+                isDragging = false;
+                playerBar.style.transition = 'transform 0.3s ease'; 
+                
+                let diff = currentY - startY;
+                
+                if (diff > 50) {
+                    playerBar.style.transform = '';
+                    playerBar.classList.remove('player-visible');
+                    playerBar.classList.add('player-hidden');
+                } else {
+                    playerBar.style.transform = '';
+                }
+            });
+        }
+
+        function toggleFavorite(id) {
+            const index = favorites.indexOf(id);
+            if (index > -1) {
+                favorites.splice(index, 1);
+                showToast("Removed", "Removed from favorites.");
+            } else {
+                favorites.push(id);
+                showToast("Added", "Saved to favorites.");
+            }
+            updateFavoritesBadge();
+            renderRingtones();
+        }
+        function toggleFavoriteActive() { if (activeRingtoneId) toggleFavorite(activeRingtoneId); }
+        function updateFavoritesBadge() { document.getElementById('favCountBadge').innerText = favorites.length; }
+
+        let selectedDownloadTitle = "";
+        function openDownloadModal(idOrTitle, category, artist) {
+            let track = allRingtones.find(r => r.id === idOrTitle);
+            
+            if(!track) track = allRingtones.find(r => r.title === idOrTitle) || allRingtones[0];
+
+            selectedDownloadTitle = track.title;
+            document.getElementById('modalTitle').innerText = track.title;
+            document.getElementById('modalCategory').innerText = `${track.category} • ${track.artist}`;
+            
+            const iconContainer = document.getElementById('modalIconContainer');
+            const icon = document.getElementById('modalIcon');
+            const coverImg = document.getElementById('modalCoverImg');
+
+            if (track.category === 'Bhajan') {
+                iconContainer.className = "w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-white text-2xl shadow-xl shadow-amber-500/30 overflow-hidden relative";
+                icon.className = "fa-solid fa-om relative z-10";
+            } else if (track.category === 'Epic') {
+                iconContainer.className = "w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white text-2xl shadow-xl shadow-emerald-500/30 overflow-hidden relative";
+                icon.className = "fa-solid fa-bolt-lightning relative z-10";
+            } else {
+                iconContainer.className = "w-14 h-14 rounded-2xl bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center text-white text-2xl shadow-xl shadow-sky-500/30 overflow-hidden relative";
+                icon.className = "fa-solid fa-bell relative z-10";
+            }
+            
+            if(track.imageUrl && track.imageUrl !== "https://via.placeholder.com/150") {
+                coverImg.src = track.imageUrl;
+                coverImg.classList.remove('hidden');
+            } else {
+                coverImg.classList.add('hidden');
+            }
+            
+            document.getElementById('downloadModal').classList.remove('hidden');
+            setTimeout(() => document.getElementById('downloadModal').classList.remove('opacity-0'), 10);
+        }
+
+        function openDownloadModalFromPlayer() {
+            const track = allRingtones.find(r => r.id === (activeRingtoneId || "1"));
+            openDownloadModal(track.id);
+        }
+        function closeDownloadModal() {
+            document.getElementById('downloadModal').classList.add('opacity-0');
+            setTimeout(() => document.getElementById('downloadModal').classList.add('hidden'), 300);
+        }
+
+        function triggerFileDownload() {
+            const track = allRingtones.find(r => r.title === selectedDownloadTitle) || allRingtones[0];
+            
+            const link = document.createElement('a');
+            link.href = track.audioUrl;
+            link.download = `${track.title}.mp3`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            showToast("Download Started", `Downloading ${selectedDownloadTitle} ...`);
+            closeDownloadModal();
+        }
+
+        function showToast(title, msg) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastTitle').innerText = title;
+            document.getElementById('toastMsg').innerText = msg;
+            toast.classList.remove('translate-x-full');
+            setTimeout(() => toast.classList.add('translate-x-full'), 3500);
+        }
+        
+        function resetFilters() {
+            syncSearch('');
+            currentCategory = 'All';
+            renderRingtones();
+        }
+    </script>
+</body>
+</html>
